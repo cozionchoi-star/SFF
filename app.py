@@ -1,9 +1,8 @@
 import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
-from datetime import datetime
 import io
-import re
+from datetime import datetime
 
 # 1. Supabase 연결
 try:
@@ -11,166 +10,151 @@ try:
     key = st.secrets["SUPABASE_KEY"]
     supabase: Client = create_client(url, key)
 except:
-    st.error("Secrets 설정을 확인해주세요.")
+    st.error("Secrets 설정(URL, KEY)을 확인해주세요.")
     st.stop()
 
 st.set_page_config(page_title="S&C FABRIC FINDER", layout="wide")
 
-# --- UI 스타일 및 설정 ---
+# --- 기존 프로그램 기반 컬럼 설정 ---
+ALL_COLUMNS = [
+    "날짜", "브랜드 및 제안처", "스타일 넘버", "업체명", "제품명", 
+    "S&C 원단명", "혼용률", "원단스펙", "원단 무게", "폭(IN)", 
+    "제시 폭", "원가(YDS)", "RMB(yds)", "RMB(M)", "전달가격", 
+    "마진(%)", "재고 및 running"
+]
+
+LABEL_COLUMNS = ["제품명", "S&C 원단명", "원단스펙", "혼용률", "원단 무게", "폭(IN)"]
+
+# --- CSS: 파란색 버튼 및 UI 재현 ---
 st.markdown("""
     <style>
-    .stButton>button { background-color: #2e39ff; color: white; border-radius: 5px; width: 100%; }
-    .stDataFrame { border: 1px solid #e6e9ef; }
+    .stButton>button { background-color: #2e39ff; color: white; border-radius: 5px; font-weight: bold; width: 100%; height: 3rem; }
+    .stButton>button:hover { background-color: #4a57ff; color: white; border: 1px solid white; }
+    div[data-testid="stExpander"] { border: 1px solid #2e39ff; border-radius: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
-# 원본 컬럼 리스트 (수정/삭제 관리를 위해 ID 포함)
-DISPLAY_COLS = [
-    "날짜", "브랜드 및 제안처", "스타일 넘버", "업체명", "제품명", "S&C 원단명",
-    "혼용률", "원단스펙", "원단 무게", "원단 무게 (BW)", "원단 무게 (기타)",
-    "폭(IN)", "제시 폭", "축률 경사", "축률 위사", "원가(YDS)", 
-    "RMB(yds)", "RMB(M)", "전달가격", "마진(%)", "재고 및 running", "초반 가격"
-]
+st.title("🧵 S&C FABRIC FINDER (Web v3)")
 
-# --- 핵심 함수: 자동 계산 로직 (기존 py 로직 이식) ---
-def auto_calculate(data_dict):
-    try:
-        # 제시 폭 계산: 폭(IN) * 0.92
-        width_in = str(data_dict.get("폭(IN)", "0")).replace("$", "").strip()
-        if width_in and float(width_in) > 0 and not data_dict.get("제시 폭"):
-            data_dict["제시 폭"] = str(int(round(float(width_in) * 0.92)))
-        
-        # 마진율 계산: ((전달가격 / 원가) - 1) * 100
-        cost = str(data_dict.get("원가(YDS)", "0")).replace("$", "").replace(",", "").strip()
-        price = str(data_dict.get("전달가격", "0")).replace("$", "").replace(",", "").strip()
-        
-        if cost and price and float(cost) > 0:
-            margin = ((float(price) / float(cost)) - 1) * 100
-            data_dict["마진(%)"] = f"{margin:.2f}%"
-    except:
-        pass
-    return data_dict
+# 사이드바 메뉴
+menu = st.sidebar.radio("📋 메뉴 선택", ["🔍 조회 및 내보내기", "📥 데이터 업로드", "⚙️ 데이터 관리"])
 
-st.title("🧵 S&C FABRIC FINDER (Full Version)")
-
-menu = st.sidebar.radio("메뉴 이동", ["🔍 검색 및 내보내기", "📥 데이터 업로드", "⚙️ 데이터 관리"])
-
-# --- 기능 1: 검색 및 선택 내보내기 ---
-if menu == "🔍 검색 및 내보내기":
-    st.subheader("📋 원단 목록 및 내보내기")
+# --- 기능 1: 조회 및 선택 내보내기 ---
+if menu == "🔍 조회 및 내보내기":
+    st.subheader("원단 정보 검색")
     
-    # 검색 영역
-    c1, c2 = st.columns([1, 3])
-    with c1:
-        s_col = st.selectbox("검색 기준", ["전체"] + DISPLAY_COLS)
-    with c2:
-        s_key = st.text_input("검색어 입력 (입력 시 자동 필터링)")
+    with st.expander("🔍 검색 필터", expanded=True):
+        c1, c2 = st.columns([1, 2])
+        with c1:
+            s_target = st.selectbox("검색 기준", ["전체"] + ALL_COLUMNS)
+        with c2:
+            s_key = st.text_input("검색어 입력")
 
-    # 데이터 가져오기
+    # 데이터 로드
     res = supabase.table("fabrics").select("*").execute()
     df = pd.DataFrame(res.data)
 
     if not df.empty:
         df = df.fillna("")
+        # 검색 필터링
         if s_key:
-            if s_col == "전체":
-                mask = df.astype(str).apply(lambda x: x.str.contains(s_key, case=False)).any(axis=1)
+            if s_target == "전체":
+                mask = df[ALL_COLUMNS].astype(str).apply(lambda x: x.str.contains(s_key, case=False)).any(axis=1)
                 df = df[mask]
             else:
-                df = df[df[s_col].astype(str).str.contains(s_key, case=False)]
+                df = df[df[s_target].astype(str).str.contains(s_key, case=False)]
 
-        # [강력 기능] 데이터 선택 모드
-        st.write(f"조회 결과: {len(df)}건 (좌측 체크박스로 내보낼 항목을 선택하세요)")
-        event = st.dataframe(
-            df[DISPLAY_COLS], 
-            use_container_width=True, 
+        st.write(f"✅ 조회 결과: {len(df)}건 (좌측 체크박스로 내보낼 항목을 선택하세요)")
+        
+        # [핵심] 선택 기능이 포함된 데이터프레임
+        selection = st.dataframe(
+            df[ALL_COLUMNS],
+            use_container_width=True,
             hide_index=True,
             on_select="rerun",
             selection_mode="multi_rows"
         )
 
-        selected_rows = event.selection.rows
-        
-        # 하단 내보내기 버튼들
-        st.write("---")
-        btn_c1, btn_c2, btn_c3 = st.columns(3)
-        
-        # 선택된 데이터 추출
-        target_df = df.iloc[selected_rows] if selected_rows else df
+        # 선택된 행 데이터 추출
+        selected_indices = selection.selection.rows
+        if selected_indices:
+            export_df = df.iloc[selected_indices]
+        else:
+            export_df = df # 선택 없으면 전체
 
-        with btn_c1:
-            # 1. 엑셀 내보내기
-            output = io.BytesIO()
-            target_df[DISPLAY_COLS].to_excel(output, index=False, engine='openpyxl')
+        st.divider()
+        st.write(f"📦 현재 {len(export_df)}개 항목이 내보내기 대상으로 준비되었습니다.")
+
+        # 내보내기 버튼 배치
+        btn1, btn2 = st.columns(2)
+        
+        with btn1:
+            # 1. 전체 데이터 내보내기
+            xlsx_all = io.BytesIO()
+            export_df[ALL_COLUMNS].to_excel(xlsx_all, index=False, engine='openpyxl')
             st.download_button(
-                f"📥 엑셀 내보내기 ({len(target_df)}건)", 
-                output.getvalue(), 
-                "fabric_export.xlsx",
-                help="선택한 항목만 엑셀로 저장합니다. 선택이 없으면 전체를 저장합니다."
+                label="📥 선택 항목 전체 엑셀 저장",
+                data=xlsx_all.getvalue(),
+                file_name=f"SFF_Full_{datetime.now().strftime('%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-        with btn_c2:
-            # 2. 라벨용 데이터 내보내기 (기존 py 기능)
-            label_cols = ["제품명", "S&C 원단명", "원단스펙", "혼용률", "원단 무게", "폭(IN)"]
-            label_output = io.BytesIO()
-            target_df[label_cols].to_excel(label_output, index=False, engine='openpyxl')
+        with btn2:
+            # 2. 라벨 데이터 내보내기
+            xlsx_label = io.BytesIO()
+            export_df[LABEL_COLUMNS].to_excel(xlsx_label, index=False, engine='openpyxl')
             st.download_button(
-                f"🏷️ 라벨 데이터 추출", 
-                label_output.getvalue(), 
-                "label_data.xlsx",
-                help="라벨(QR) 출력용 6개 핵심 컬럼만 추출합니다."
+                label="🏷️ 라벨용(6종) 데이터 추출",
+                data=xlsx_label.getvalue(),
+                file_name=f"SFF_Label_{datetime.now().strftime('%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
+    else:
+        st.info("DB에 데이터가 없습니다. 업로드를 먼저 진행해주세요.")
 
 # --- 기능 2: 데이터 업로드 (ValueError 해결) ---
 elif menu == "📥 데이터 업로드":
-    st.subheader("📁 대량 엑셀 업로드")
-    file = st.file_uploader("엑셀 파일 선택", type=["xlsx", "xls"])
+    st.subheader("엑셀 파일 일괄 등록")
+    st.info("엑셀의 컬럼명이 '제품명', '원단명' 등과 일치해야 합니다.")
     
-    if file:
-        df_up = pd.read_excel(file).fillna("").astype(str)
-        st.dataframe(df_up.head(3))
+    up_file = st.file_uploader("엑셀 파일 선택", type=["xlsx", "xls"])
+    
+    if up_file:
+        df_raw = pd.read_excel(up_file)
         
-        if st.button("DB 저장 시작"):
-            rows = []
-            for _, r in df_up.iterrows():
-                # 자동 계산 적용 후 리스트 추가
-                row_data = auto_calculate(r.to_dict())
-                clean_row = {k: str(v) for k, v in row_data.items() if k in DISPLAY_COLS}
-                rows.append(clean_row)
-            
-            try:
-                for i in range(0, len(rows), 50):
-                    supabase.table("fabrics").insert(rows[i:i+50]).execute()
-                st.success("업로드 완료!")
-            except Exception as e:
-                st.error(f"오류: {e}")
+        # [에러 방지] 1. NaN 제거 2. 모든 데이터를 문자열로 강제 변환
+        df_clean = df_raw.fillna("").astype(str)
+        
+        st.write("미리보기 (상위 3건):")
+        st.dataframe(df_clean.head(3))
 
-# --- 기능 3: 데이터 관리 (수정/삭제) ---
+        if st.button("서버로 데이터 전송 시작"):
+            # DB 컬럼에 맞는 데이터만 추출
+            data_to_send = []
+            for _, row in df_clean.iterrows():
+                item = {col: row[col] for col in ALL_COLUMNS if col in df_clean.columns}
+                
+                # 기존 py의 자동계산 로직 재현 (제시 폭)
+                if item.get("폭(IN)") and not item.get("제시 폭"):
+                    try:
+                        w = float(item["폭(IN)"].replace("$",""))
+                        item["제시 폭"] = str(int(round(w * 0.92)))
+                    except: pass
+                data_to_send.append(item)
+
+            try:
+                # 100개씩 끊어서 안정적으로 업로드
+                for i in range(0, len(data_to_send), 100):
+                    supabase.table("fabrics").insert(data_to_send[i:i+100]).execute()
+                st.success(f"🚀 {len(data_to_send)}건 업로드 완료!")
+            except Exception as e:
+                st.error(f"전송 중 오류 발생: {e}")
+
+# --- 기능 3: 데이터 관리 ---
 elif menu == "⚙️ 데이터 관리":
-    st.subheader("🛠️ 데이터 수정 및 삭제")
-    res = supabase.table("fabrics").select("*").execute()
-    df_manage = pd.DataFrame(res.data)
-    
-    if not df_manage.empty:
-        target_idx = st.selectbox("수정/삭제할 원단 선택", df_manage.index, 
-                                  format_func=lambda x: f"{df_manage.loc[x, '제품명']} ({df_manage.loc[x, '스타일 넘버']})")
-        
-        with st.form("edit_form"):
-            selected_data = df_manage.loc[target_idx]
-            new_values = {}
-            cols = st.columns(3)
-            for i, c_name in enumerate(DISPLAY_COLS):
-                with cols[i % 3]:
-                    new_values[c_name] = st.text_input(c_name, value=str(selected_data[c_name]))
-            
-            c_btn1, c_btn2 = st.columns(2)
-            if c_btn1.form_submit_button("✅ 정보 업데이트"):
-                new_values = auto_calculate(new_values)
-                supabase.table("fabrics").update(new_values).eq("id", selected_data['id']).execute()
-                st.success("수정되었습니다.")
-                st.rerun()
-            
-            if c_btn2.form_submit_button("❌ 데이터 삭제"):
-                supabase.table("fabrics").delete().eq("id", selected_data['id']).execute()
-                st.warning("삭제되었습니다.")
-                st.rerun()
+    st.subheader("데이터베이스 초기화")
+    st.warning("이 작업은 복구할 수 없습니다.")
+    if st.button("🔥 전체 데이터 삭제"):
+        if st.checkbox("정말로 삭제하시겠습니까?"):
+            supabase.table("fabrics").delete().neq("id", 0).execute()
+            st.success("데이터가 초기화되었습니다.")
