@@ -778,17 +778,27 @@ class FabricApp:
         win.focus_set() 
         
         entries={}
+        memo_text = None  # Text 위젯 (메모 전용)
         for i, col in enumerate(self.SETTINGS["COLUMNS"]):
-            tk.Label(win,text=col, bg=self.GEMINI_COLORS["DARK_BG"], fg=self.GEMINI_COLORS["TEXT_LIGHT"]).grid(row=i,column=0,sticky="w",padx=5,pady=2)
-            e=tk.Entry(win,width=40, bg=self.GEMINI_COLORS["LIGHTER_DARK_BG"], fg=self.GEMINI_COLORS["TEXT_LIGHT"], insertbackground=self.GEMINI_COLORS["TEXT_LIGHT"]); e.grid(row=i,column=1,padx=5,pady=2)
-            entries[col]=e
-            
-            if (mode=="add" or mode=="proposal") and col=="날짜":
-                e.insert(0,datetime.now().strftime('%Y-%m-%d'))
-            elif initial_data and col in initial_data:
-                disp=self._format_data_for_display(initial_data[col],col)
-                if not(mode=="proposal" and col in("제시 폭","마진(%)")): 
-                    e.insert(0,disp)
+            tk.Label(win,text=col, bg=self.GEMINI_COLORS["DARK_BG"], fg=self.GEMINI_COLORS["TEXT_LIGHT"]).grid(row=i,column=0,sticky="nw",padx=5,pady=2)
+            if col == "메모":
+                t = tk.Text(win, width=40, height=4, bg=self.GEMINI_COLORS["LIGHTER_DARK_BG"],
+                            fg=self.GEMINI_COLORS["TEXT_LIGHT"], insertbackground=self.GEMINI_COLORS["TEXT_LIGHT"],
+                            relief="flat", wrap="word")
+                t.grid(row=i, column=1, padx=5, pady=2)
+                memo_text = t
+                if initial_data and col in initial_data and initial_data[col]:
+                    t.insert("1.0", initial_data[col])
+            else:
+                e=tk.Entry(win,width=40, bg=self.GEMINI_COLORS["LIGHTER_DARK_BG"], fg=self.GEMINI_COLORS["TEXT_LIGHT"], insertbackground=self.GEMINI_COLORS["TEXT_LIGHT"]); e.grid(row=i,column=1,padx=5,pady=2)
+                entries[col]=e
+
+                if (mode=="add" or mode=="proposal") and col=="날짜":
+                    e.insert(0,datetime.now().strftime('%Y-%m-%d'))
+                elif initial_data and col in initial_data:
+                    disp=self._format_data_for_display(initial_data[col],col)
+                    if not(mode=="proposal" and col in("제시 폭","마진(%)")):
+                        e.insert(0,disp)
 
         # ── 환율 입력란 ──
         exr_row = len(self.SETTINGS["COLUMNS"])
@@ -878,7 +888,8 @@ class FabricApp:
             except:
                 pass
 
-            raw_ui_names = {c: entries[c].get() for c in self.SETTINGS["COLUMNS"]}
+            raw_ui_names = {c: entries[c].get() for c in self.SETTINGS["COLUMNS"] if c != "메모"}
+            raw_ui_names["메모"] = memo_text.get("1.0", "end-1c").strip() if memo_text else ""
             
             # UI 컬럼명 데이터를 DB 컬럼명 데이터로 변환
             data_for_db = {}
