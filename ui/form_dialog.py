@@ -35,20 +35,30 @@ def open_form(master, mode, db_path, row_id=None, initial_data=None,
         pass
 
     entries = {}
+    memo_text = None  # Text 위젯 (메모 전용)
     for i, col in enumerate(config.COLUMNS):
         tk.Label(win, text=col, bg=c["DARK_BG"], fg=c["TEXT_LIGHT"]).grid(
-            row=i, column=0, sticky="w", padx=5, pady=2)
-        e = tk.Entry(win, width=40, bg=c["LIGHTER_DARK_BG"],
-                     fg=c["TEXT_LIGHT"], insertbackground=c["TEXT_LIGHT"])
-        e.grid(row=i, column=1, padx=5, pady=2)
-        entries[col] = e
+            row=i, column=0, sticky="nw", padx=5, pady=2)
+        if col == "메모":
+            t = tk.Text(win, width=40, height=4, bg=c["LIGHTER_DARK_BG"],
+                        fg=c["TEXT_LIGHT"], insertbackground=c["TEXT_LIGHT"],
+                        relief="flat", wrap="word")
+            t.grid(row=i, column=1, padx=5, pady=2)
+            memo_text = t
+            if initial_data and col in initial_data and initial_data[col]:
+                t.insert("1.0", initial_data[col])
+        else:
+            e = tk.Entry(win, width=40, bg=c["LIGHTER_DARK_BG"],
+                         fg=c["TEXT_LIGHT"], insertbackground=c["TEXT_LIGHT"])
+            e.grid(row=i, column=1, padx=5, pady=2)
+            entries[col] = e
 
-        if (mode in ("add", "proposal")) and col == "날짜":
-            e.insert(0, datetime.now().strftime("%Y-%m-%d"))
-        elif initial_data and col in initial_data:
-            disp = utils.format_for_display(initial_data[col], col)
-            if not (mode == "proposal" and col in ("제시 폭", "마진(%)")):
-                e.insert(0, disp)
+            if (mode in ("add", "proposal")) and col == "날짜":
+                e.insert(0, datetime.now().strftime("%Y-%m-%d"))
+            elif initial_data and col in initial_data:
+                disp = utils.format_for_display(initial_data[col], col)
+                if not (mode == "proposal" and col in ("제시 폭", "마진(%)")):
+                    e.insert(0, disp)
 
     # 환율 입력
     exr_row = len(config.COLUMNS)
@@ -126,7 +136,8 @@ def open_form(master, mode, db_path, row_id=None, initial_data=None,
         except ValueError:
             pass
 
-        ui_data = {col: entries[col].get() for col in config.COLUMNS}
+        ui_data = {col: entries[col].get() for col in config.COLUMNS if col != "메모"}
+        ui_data["메모"] = memo_text.get("1.0", "end-1c").strip() if memo_text else ""
         try:
             database.save_fabric(db_path, ui_data, row_id if mode == "edit" else None)
             messagebox.showinfo("완료", "데이터가 저장되었습니다.", parent=win)

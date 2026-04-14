@@ -29,6 +29,7 @@ COLUMNS = [
     "원가(YDS)", "RMB(yds)", "RMB(M)",
     "전달가격", "마진(%)",
     "재고 및 running",
+    "메모",
 ]
 
 # DB 컬럼명 ↔ UI 컬럼명 매핑 (key=DB명, value=UI명)
@@ -60,7 +61,7 @@ CURRENCY_COLS_DISPLAY = ["원가(YDS)", "전달가격"]
 PERCENT_COLS_DISPLAY  = ["마진(%)"]
 
 # 항상 숨길 컬럼
-ALWAYS_HIDDEN_COLS = ["축률 경사", "축률 위사"]
+ALWAYS_HIDDEN_COLS = ["축률 경사", "축률 위사", "메모"]
 
 # 간략모드 토글 컬럼
 COMPACT_MODE_TOGGLE_COLS = ["폭(IN)", "RMB(yds)", "RMB(M)"]

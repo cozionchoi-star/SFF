@@ -34,7 +34,7 @@ def init_db(db_path):
         cur = conn.cursor()
         cur.execute("PRAGMA table_info(fabrics)")
         existing = [r[1] for r in cur.fetchall()]
-        for col in ("담당자", "시즌", "채택여부"):
+        for col in ("담당자", "시즌", "채택여부", "메모"):
             if col not in existing:
                 cur.execute(f'ALTER TABLE fabrics ADD COLUMN "{col}" TEXT DEFAULT ""')
         conn.commit()
